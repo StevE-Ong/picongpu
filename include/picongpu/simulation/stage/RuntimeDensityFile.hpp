@@ -23,6 +23,7 @@
 #include "picongpu/particles/Particles.hpp"
 #include "picongpu/particles/boundary/Kind.hpp"
 #include "picongpu/particles/densityProfiles/FromOpenPMDImpl.hpp"
+#include "picongpu/particles/functor/misc/OpenPMDScalarField.hpp"
 #include "picongpu/particles/param.hpp"
 
 #include <pmacc/Environment.hpp>
@@ -73,6 +74,25 @@ namespace picongpu
                                 + "'\n. Only has effect when FromOpenPMDImpl<Param> density is used for the species "
                                   "and its Param::filename is empty.\n")
                                 .c_str());
+                        namespace misc = particles::functor::misc;
+                        auto* temperatureFilename = &misc::RuntimeFile<misc::RuntimeTemperatureFileTag>::get(prefix);
+                        desc.add_options()(
+                            (prefix + "_runtimeTemperatureFile").c_str(),
+                            po::value<std::string>(temperatureFilename),
+                            std::string(
+                                "Runtime temperature file name for species '" + prefix
+                                + "'\n. Only has effect when manipulator TemperatureFromOpenPMD<Param> is used "
+                                  "for the species and its Param::filename is empty.\n")
+                                .c_str());
+                        auto* chargeStateFilename = &misc::RuntimeFile<misc::RuntimeChargeStateFileTag>::get(prefix);
+                        desc.add_options()(
+                            (prefix + "_runtimeChargeStateFile").c_str(),
+                            po::value<std::string>(chargeStateFilename),
+                            std::string(
+                                "Runtime charge state file name for species '" + prefix
+                                + "'\n. Only has effect when manipulator ChargeStateFromOpenPMD<Param> is used "
+                                  "for the species and its Param::filename is empty.\n")
+                                .c_str());
 #endif
                     }
 
@@ -83,11 +103,13 @@ namespace picongpu
 
             } // namespace detail
 
-            /** Functor for setting up runtime path for density from file
+            /** Functor for setting up runtime paths for initialization from file
              *
-             * Affects invocations of FromOpenPMDImpl<Param> with empty Param::filename.
-             * This stage allows to effectively set its value in runtime using a prefix of species it is applied to.
-             * In case there are several invocations for the same species, the same runtime parameter is used for all.
+             * Affects invocations of densityProfiles::FromOpenPMDImpl<Param>,
+             * manipulators::unary::TemperatureFromOpenPMD<Param> and
+             * manipulators::unary::ChargeStateFromOpenPMD<Param> with empty Param::filename. This stage allows to
+             * effectively set its value in runtime using a prefix of species it is applied to. In case there are
+             * several invocations for the same species, the same runtime parameter is used for all.
              *
              * Note that this is merely a runtime convenience hook for what normally is a compile-time variable.
              * It does not perform calculations by itself, nor affects other parameters or logic of FromOpenPMDImpl.

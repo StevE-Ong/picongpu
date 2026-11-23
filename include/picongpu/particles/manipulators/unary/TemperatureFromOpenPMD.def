@@ -1,0 +1,111 @@
+/* Copyright 2026 StevE-Ong
+ *
+ * This file is part of PIConGPU.
+ *
+ * PIConGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * PIConGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with PIConGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+//! @file defines a manipulator setting the particle temperature from an openPMD file
+
+#if (ENABLE_OPENPMD == 1)
+
+#    pragma once
+
+#    include "picongpu/defines.hpp"
+#    include "picongpu/particles/manipulators/unary/FreeTotalCellOffsetRng.def"
+
+#    include <pmacc/math/operation.hpp>
+#    include <pmacc/random/distributions/Normal.hpp>
+
+namespace picongpu::particles::manipulators::unary
+{
+    namespace acc
+    {
+        /** Functor modifying particle momentum based on a temperature loaded from an openPMD file
+         *
+         * @tparam T_ParamClass parameter type, follows requirements of param::TemperatureFromOpenPMDCfg
+         * @tparam T_SpeciesType species type
+         * @tparam T_ValueFunctor pmacc::math::operation::*, binary functor type to add a new momentum to an old one
+         */
+        template<typename T_ParamClass, typename T_SpeciesType, typename T_ValueFunctor>
+        struct TemperatureFromOpenPMD;
+    } // namespace acc
+
+    namespace param
+    {
+        //! Configuration struct for the unary manipulator TemperatureFromOpenPMD
+        struct TemperatureFromOpenPMDCfg
+        {
+            /** Path to the openPMD input file
+             *
+             * Empty string means that the value of the command-line option
+             * <species>_runtimeTemperatureFile is used.
+             * File-based iteration format is supported, with the usual openPMD API naming scheme.
+             */
+            static constexpr char const* filename = "temperature.h5";
+
+            /** Name of the openPMD mesh record inside the iteration
+             *
+             * The dataset must be a scalar of type float_X, values are temperature in keV.
+             * By default, the dataset indexing is assumed to be in (x, y, z) coordinates,
+             * this can be changed by the openPMD attribute "axisLabels" of the dataset.
+             */
+            static constexpr char const* datasetName = "temperature";
+
+            //! Iteration inside the file (not related to the current simulation time iteration)
+            static constexpr uint32_t iteration = 0;
+
+            /** Offset in the file in cells, in (x, y, z) coordinates
+             *
+             * Each value is the temperature at (total cell index - offset).
+             */
+            static constexpr DataSpace<simDim> offset = DataSpace<DIM3>(0, 0, 0).shrink<simDim>();
+
+            //! Temperature in keV for cells with no corresponding file value
+            static constexpr float_X defaultTemperature = 0.0_X;
+        };
+    } // namespace param
+
+    /** Modify particle momentum based on a temperature loaded from an openPMD file
+     *
+     * Sample a random momentum value distributed according to the temperature of the cell the particle is in,
+     * and add it to the existing particle momentum.
+     * The functor is for the non-relativistic case only, the added momentum follows the Maxwell-Boltzmann
+     * distribution, same as unary::Temperature.
+     * The temperature is isotropic. Negative values in the file are treated as zero.
+     *
+     * The file is read on every invocation of the manipulator.
+     * The values are temporarily stored in FieldTmp slot 0, so fieldTmpNumSlots must be at least 1.
+     *
+     * @tparam T_ParamClass parameter type, follows requirements of param::TemperatureFromOpenPMDCfg
+     * @tparam T_ValueFunctor pmacc::math::operation::*, binary functor type to add a new momentum to an old one
+     */
+    template<
+        typename T_ParamClass = param::TemperatureFromOpenPMDCfg,
+        typename T_ValueFunctor = pmacc::math::operation::Add>
+    struct TemperatureFromOpenPMD
+    {
+        template<typename T_SpeciesType>
+        struct apply
+        {
+            using type = FreeTotalCellOffsetRng<
+                acc::TemperatureFromOpenPMD<T_ParamClass, T_SpeciesType, T_ValueFunctor>,
+                pmacc::random::distributions::Normal<float_X>>;
+        };
+    };
+
+} // namespace picongpu::particles::manipulators::unary
+
+#endif

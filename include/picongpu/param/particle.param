@@ -113,6 +113,51 @@ namespace picongpu
              */
             using AddFreeTemperature = unary::FreeTemperature<TemperatureFunctor>;
 
+            /** Define initial particle temperature from an openPMD file
+             *
+             * The temperature is isotropic and given cell-wise in keV,
+             * see unary::TemperatureFromOpenPMD and FromOpenPMDParam in density.param for the file layout.
+             * Typically there is one struct for the ions and one for the electrons.
+             */
+            struct IonTemperatureFromOpenPMDParam
+            {
+                /** Path to the openPMD input file
+                 *
+                 * Set to "" to provide the file at runtime via the command-line option
+                 * <species>_runtimeTemperatureFile.
+                 */
+                static constexpr char const* filename = "temperature.h5";
+
+                //! Name of the scalar openPMD mesh record, values in keV
+                static constexpr char const* datasetName = "ion_temperature";
+
+                //! Iteration inside the file (only file, not related to the current simulation time iteration)
+                static constexpr uint32_t iteration = 0;
+
+                //! Offset in the file in cells in (x, y, z): each value is at (total cell index - offset)
+                static constexpr DataSpace<simDim> offset = DataSpace<DIM3>(0, 0, 0).shrink<simDim>();
+
+                //! Temperature in keV for cells with no corresponding file value
+                static constexpr float_X defaultTemperature = 0.0_X;
+            };
+
+            //! Same as IonTemperatureFromOpenPMDParam, but for the electrons
+            struct ElectronTemperatureFromOpenPMDParam : IonTemperatureFromOpenPMDParam
+            {
+                static constexpr char const* datasetName = "electron_temperature";
+            };
+
+#if (ENABLE_OPENPMD == 1)
+            /** Definition of manipulators adding a temperature loaded from an openPMD file
+             *
+             * Apply them after the electrons are derived from the ions (Derive<> or ManipulateDerive<>),
+             * otherwise the electrons copy the ion momentum.
+             */
+            using AddIonTemperatureFromOpenPMD = unary::TemperatureFromOpenPMD<IonTemperatureFromOpenPMDParam>;
+            using AddElectronTemperatureFromOpenPMD
+                = unary::TemperatureFromOpenPMD<ElectronTemperatureFromOpenPMDParam>;
+#endif
+
             /** Unary particle manipulator: double each weighting. */
             struct DoubleWeightingFunctor
             {
@@ -151,6 +196,57 @@ namespace picongpu
              * particle of an ion of a species to neutral
              */
             using SetNeutral = unary::ChargeState<0u>;
+
+            /** Define initial ion charge state from an openPMD file
+             *
+             * The cell-wise value is the (average) charge state Z, may be fractional.
+             * Each macro-ion gets floor(Z) or floor(Z) + 1 at random, so that the mean in the cell is Z,
+             * see unary::ChargeStateFromOpenPMD.
+             */
+            struct ChargeStateFromOpenPMDParam
+            {
+                /** Path to the openPMD input file
+                 *
+                 * Set to "" to provide the file at runtime via the command-line option
+                 * <species>_runtimeChargeStateFile.
+                 */
+                static constexpr char const* filename = "chargeState.h5";
+
+                //! Name of the scalar openPMD mesh record, values are charge states
+                static constexpr char const* datasetName = "charge_state";
+
+                //! Iteration inside the file (only file, not related to the current simulation time iteration)
+                static constexpr uint32_t iteration = 0;
+
+                //! Offset in the file in cells in (x, y, z): each value is at (total cell index - offset)
+                static constexpr DataSpace<simDim> offset = DataSpace<DIM3>(0, 0, 0).shrink<simDim>();
+
+                //! Charge state for cells with no corresponding file value
+                static constexpr float_X defaultChargeState = 0.0_X;
+            };
+
+#if (ENABLE_OPENPMD == 1)
+            /** Definition of manipulator setting the ion charge state from an openPMD file
+             *
+             * Example of an initialization from file in speciesInitialization.param,
+             * electrons follow from the ion density and charge state:
+             * @code{.cpp}
+             * using InitPipeline = pmacc::mp_list<
+             *     CreateDensity<densityProfiles::FromOpenPMD, startPosition::Random, Ions>,
+             *     Manipulate<manipulators::SetChargeStateFromOpenPMD, Ions>,
+             *     // create electrons at the ion positions with weighting Z * ion weighting,
+             *     // skip neutral macro-ions, they would give macro-electrons with weighting 0 (NaN in the pusher)
+             *     ManipulateDerive<
+             *         manipulators::binary::UnboundElectronsTimesWeighting,
+             *         Ions,
+             *         Electrons,
+             *         filter::IsIonized>,
+             *     Manipulate<manipulators::AddIonTemperatureFromOpenPMD, Ions>,
+             *     Manipulate<manipulators::AddElectronTemperatureFromOpenPMD, Electrons>>;
+             * @endcode
+             */
+            using SetChargeStateFromOpenPMD = unary::ChargeStateFromOpenPMD<ChargeStateFromOpenPMDParam>;
+#endif
 
         } // namespace manipulators
 

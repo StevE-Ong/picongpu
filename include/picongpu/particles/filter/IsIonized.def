@@ -1,0 +1,59 @@
+/* Copyright 2026 StevE-Ong
+ *
+ * This file is part of PIConGPU.
+ *
+ * PIConGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * PIConGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with PIConGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+//! @file defines a particle filter selecting ions which have at least one unbound electron
+
+#pragma once
+
+#include "picongpu/defines.hpp"
+#include "picongpu/particles/filter/generic/Free.def"
+#include "picongpu/particles/traits/GetAtomicNumbers.hpp"
+
+namespace picongpu::particles::filter
+{
+    namespace acc
+    {
+        //! Functor selecting macro-ions with charge state > 0, i.e. boundElectrons < numberOfProtons
+        struct IsIonized
+        {
+            template<typename T_Particle>
+            HDINLINE bool operator()(T_Particle const& particle)
+            {
+                float_X const numberOfProtons = picongpu::traits::GetAtomicNumbers<T_Particle>::type::numberOfProtons;
+                return particle[boundElectrons_] < numberOfProtons;
+            }
+
+            static constexpr char const* name = "isIonized";
+            static constexpr bool isDeterministic = true;
+        };
+    } // namespace acc
+
+    /** Select macro-ions with charge state > 0
+     *
+     * The species requires the attributes boundElectrons and atomicNumbers.
+     * Use it as source filter when deriving electrons from ions with binary::UnboundElectronsTimesWeighting,
+     * so that neutral macro-ions do not produce macro-electrons with weighting 0.
+     * Such zero-weight macro-electrons make the particle pusher divide by zero and the fields become NaN.
+     *
+     * @code{.cpp}
+     * ManipulateDerive<manipulators::binary::UnboundElectronsTimesWeighting, Ions, Electrons, filter::IsIonized>
+     * @endcode
+     */
+    using IsIonized = generic::Free<acc::IsIonized>;
+} // namespace picongpu::particles::filter

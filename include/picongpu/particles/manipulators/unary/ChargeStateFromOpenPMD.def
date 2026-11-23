@@ -1,0 +1,113 @@
+/* Copyright 2026 StevE-Ong
+ *
+ * This file is part of PIConGPU.
+ *
+ * PIConGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * PIConGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with PIConGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+//! @file defines a manipulator setting the ion charge state from an openPMD file
+
+#if (ENABLE_OPENPMD == 1)
+
+#    pragma once
+
+#    include "picongpu/defines.hpp"
+#    include "picongpu/particles/manipulators/unary/FreeTotalCellOffsetRng.def"
+
+#    include <pmacc/random/distributions/Uniform.hpp>
+
+#    include <cstdint>
+
+namespace picongpu::particles::manipulators::unary
+{
+    namespace acc
+    {
+        /** Functor setting the ion charge state based on a value loaded from an openPMD file
+         *
+         * @tparam T_ParamClass parameter type, follows requirements of param::ChargeStateFromOpenPMDCfg
+         * @tparam T_SpeciesType species type
+         */
+        template<typename T_ParamClass, typename T_SpeciesType>
+        struct ChargeStateFromOpenPMD;
+    } // namespace acc
+
+    namespace param
+    {
+        //! Configuration struct for the unary manipulator ChargeStateFromOpenPMD
+        struct ChargeStateFromOpenPMDCfg
+        {
+            /** Path to the openPMD input file
+             *
+             * Empty string means that the value of the command-line option
+             * <species>_runtimeChargeStateFile is used.
+             * File-based iteration format is supported, with the usual openPMD API naming scheme.
+             */
+            static constexpr char const* filename = "chargeState.h5";
+
+            /** Name of the openPMD mesh record inside the iteration
+             *
+             * The dataset must be a scalar of type float_X, values are the (average) charge state Z,
+             * i.e. number of protons minus number of bound electrons, may be fractional.
+             * By default, the dataset indexing is assumed to be in (x, y, z) coordinates,
+             * this can be changed by the openPMD attribute "axisLabels" of the dataset.
+             */
+            static constexpr char const* datasetName = "chargeState";
+
+            //! Iteration inside the file (not related to the current simulation time iteration)
+            static constexpr uint32_t iteration = 0;
+
+            /** Offset in the file in cells, in (x, y, z) coordinates
+             *
+             * Each value is the charge state at (total cell index - offset).
+             */
+            static constexpr DataSpace<simDim> offset = DataSpace<DIM3>(0, 0, 0).shrink<simDim>();
+
+            //! Charge state for cells with no corresponding file value
+            static constexpr float_X defaultChargeState = 0.0_X;
+        };
+    } // namespace param
+
+    /** Set the charge state of macro-ions from an openPMD file
+     *
+     * The value Z of the cell the macro-ion is in is clamped to [0, numberOfProtons].
+     * A fractional Z is realized by stochastic rounding: each macro-ion gets the charge state
+     * floor(Z) + 1 with probability Z - floor(Z), and floor(Z) otherwise.
+     * So each macro-ion has an integer charge state, and the mean charge state in the cell equals Z.
+     *
+     * The ion species requires the attributes boundElectrons and atomicNumbers.
+     * Use binary::UnboundElectronsTimesWeighting afterwards to derive the matching electrons,
+     * together with the source filter filter::IsIonized: macro-ions with charge state 0 would otherwise give
+     * macro-electrons with weighting 0, which make the particle pusher produce NaN.
+     *
+     * The file is read on every invocation of the manipulator.
+     * The values are temporarily stored in FieldTmp slot 0, so fieldTmpNumSlots must be at least 1.
+     *
+     * @tparam T_ParamClass parameter type, follows requirements of param::ChargeStateFromOpenPMDCfg
+     */
+    template<typename T_ParamClass = param::ChargeStateFromOpenPMDCfg>
+    struct ChargeStateFromOpenPMD
+    {
+        template<typename T_SpeciesType>
+        struct apply
+        {
+            using type = FreeTotalCellOffsetRng<
+                acc::ChargeStateFromOpenPMD<T_ParamClass, T_SpeciesType>,
+                pmacc::random::distributions::Uniform<float_X>>;
+        };
+    };
+
+} // namespace picongpu::particles::manipulators::unary
+
+#endif
