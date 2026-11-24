@@ -1,0 +1,88 @@
+/* Copyright 2026 Jian Fuh Ong
+ *
+ * This file is part of PIConGPU.
+ *
+ * PIConGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * PIConGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with PIConGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/** @file
+ *
+ * Bremsstrahlung test: fixed ions, mono-energetic electrons and photons, no pushers and no currents.
+ */
+
+#pragma once
+
+#include "picongpu/particles/Particles.hpp"
+
+#include <pmacc/identifier/value_identifier.hpp>
+#include <pmacc/meta/String.hpp>
+#include <pmacc/meta/conversion/MakeSeq.hpp>
+#include <pmacc/particles/Identifier.hpp>
+#include <pmacc/particles/traits/FilterByFlag.hpp>
+
+/** atomic numbers of the target ions, a struct of ionization::atomicNumbers */
+#ifndef PARAM_ATOMIC_NUMBERS
+#    define PARAM_ATOMIC_NUMBERS Gold_t
+#endif
+
+namespace picongpu
+{
+    /*########################### define particle attributes #####################*/
+
+    using DefaultParticleAttributes = MakeSeq_t<position<position_pic>, momentum, weighting, particleId>;
+
+    /*########################### define species #################################*/
+
+    /*--------------------------- photons ----------------------------------------*/
+    value_identifier(float_X, MassRatioPhoton, 0.0);
+    value_identifier(float_X, ChargeRatioPhoton, 0.0);
+
+    using ParticleFlagsPhotons = MakeSeq_t<
+        shape<UsedParticleShape>,
+        interpolation<UsedField2Particle>,
+        massRatio<MassRatioPhoton>,
+        chargeRatio<ChargeRatioPhoton>>;
+    using PIC_Photons = Particles<PMACC_CSTRING("ph"), ParticleFlagsPhotons, DefaultParticleAttributes>;
+
+    /*--------------------------- ions -------------------------------------------*/
+    value_identifier(float_X, MassRatioIons, 1.0);
+    value_identifier(float_X, ChargeRatioIons, -1.0);
+
+    using ParticleFlagsIons = MakeSeq_t<
+        shape<UsedParticleShape>,
+        interpolation<UsedField2Particle>,
+        massRatio<MassRatioIons>,
+        chargeRatio<ChargeRatioIons>,
+        atomicNumbers<ionization::atomicNumbers::PARAM_ATOMIC_NUMBERS>>;
+    using PIC_Ions = Particles<PMACC_CSTRING("i"), ParticleFlagsIons, DefaultParticleAttributes>;
+
+    /*--------------------------- electrons --------------------------------------*/
+    value_identifier(float_X, MassRatioElectrons, 1.0);
+    value_identifier(float_X, ChargeRatioElectrons, 1.0);
+
+    using ParticleFlagsElectrons = MakeSeq_t<
+        shape<UsedParticleShape>,
+        interpolation<UsedField2Particle>,
+        massRatio<MassRatioElectrons>,
+        chargeRatio<ChargeRatioElectrons>,
+        bremsstrahlungIons<PIC_Ions>,
+        bremsstrahlungPhotons<PIC_Photons>>;
+    using PIC_Electrons = Particles<PMACC_CSTRING("e"), ParticleFlagsElectrons, DefaultParticleAttributes>;
+
+    /*########################### end species ####################################*/
+
+    using VectorAllSpecies = MakeSeq_t<PIC_Ions, PIC_Electrons, PIC_Photons>;
+
+} // namespace picongpu

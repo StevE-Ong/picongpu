@@ -1,0 +1,198 @@
+/* Copyright 2016-2026 Heiko Burau, Jian Fuh Ong
+ *
+ * This file is part of PIConGPU.
+ *
+ * PIConGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * PIConGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with PIConGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/** @file
+ *
+ * Parameters of the Bremsstrahlung extension.
+ *
+ * An electron species gets Bremsstrahlung with the species flags
+ * `bremsstrahlungIons<IonSpecies>` and `bremsstrahlungPhotons<PhotonSpecies>`.
+ * The ion species needs the flag `atomicNumbers<>`; the photon species has mass and charge 0.
+ *
+ * Model (port of the PIConGPU 0.6.0 extension, see Bremsstrahlung stage):
+ *  - electron deflection: small-angle Rutherford scattering on the ion species, polar angle in [MIN_THETA, pi]
+ *  - photons below the soft-photon cutoff: no macro-photon, a drag force (energy loss) on the electron
+ *  - photons above the soft-photon cutoff: macro-photons, emission angle from the Lorentz-boosted dipole formula
+ *  - cross section: screened Bethe-Heitler, see Salvat et al., Radiat. Phys. Chem. 75, 1201 (2006)
+ *
+ * All rates use the path v * dt of the electron in one time step (v = electron speed).
+ *
+ * This file is included directly by the Bremsstrahlung code (no loader, no unitless file).
+ */
+
+#pragma once
+
+/* Test setup: the switches are set from cmakeFlags (PARAM_OVERWRITES). */
+#ifndef PARAM_BREMS_DEFLECTION
+#    define PARAM_BREMS_DEFLECTION false
+#endif
+#ifndef PARAM_BREMS_ENERGYLOSS
+#    define PARAM_BREMS_ENERGYLOSS false
+#endif
+#ifndef PARAM_BREMS_RECOIL
+#    define PARAM_BREMS_RECOIL false
+#endif
+#ifndef PARAM_BREMS_NUM_SAMPLES_SCALE
+#    define PARAM_BREMS_NUM_SAMPLES_SCALE 1
+#endif
+
+namespace picongpu
+{
+    namespace particles
+    {
+        namespace bremsstrahlung
+        {
+            /** params related to the energy loss and deflection of the incident electron
+             */
+            namespace electron
+            {
+                /** Minimal kinetic electron energy in MeV for the lookup table.
+                 * For electrons below this value Bremsstrahlung is not taken into account.
+                 */
+                constexpr float_64 MIN_ENERGY_MeV = 0.5;
+
+                /** Maximal kinetic electron energy in MeV for the lookup table.
+                 * Electrons above this value use the table values at MAX_ENERGY_MeV and a warning is printed.
+                 */
+                constexpr float_64 MAX_ENERGY_MeV = 200.0;
+
+                /** Minimal polar deflection angle due to screening. See Jackson 13.5 for a rule of thumb to this
+                 * value.
+                 *
+                 * unit: rad
+                 */
+                constexpr float_64 MIN_THETA = 0.01;
+
+                /** number of lookup table divisions for the kappa axis.
+                 * Kappa is the energy loss normalized to the initial kinetic energy.
+                 * The axis is scaled linearly.
+                 */
+                constexpr uint32_t NUM_SAMPLES_KAPPA = 32 * PARAM_BREMS_NUM_SAMPLES_SCALE;
+
+                /** number of lookup table divisions for the initial kinetic energy axis.
+                 * The axis is scaled logarithmically.
+                 */
+                constexpr uint32_t NUM_SAMPLES_EKIN = 32 * PARAM_BREMS_NUM_SAMPLES_SCALE;
+
+                /** Kappa is the energy loss normalized to the initial kinetic energy.
+                 * This minimal value is needed by the numerics to avoid a division by zero.
+                 */
+                constexpr float_64 MIN_KAPPA = 1.0e-10;
+
+                /** number of integration steps for one entry of the stopping power table */
+                constexpr uint32_t NUM_STEPS_STOPPING_POWER_INTEGRAL = 1000;
+
+                /** Deflection of the electron by Rutherford scattering (true: on). */
+                constexpr bool Deflection = PARAM_BREMS_DEFLECTION;
+
+                /** Energy loss of the electron by the drag force of the soft photons (true: on). */
+                constexpr bool EnergyLoss = PARAM_BREMS_ENERGYLOSS;
+
+                /** Recoil of the electron by an emitted macro-photon (true: on).
+                 * The photon momentum is subtracted along the electron momentum (ultra-relativistic limit).
+                 */
+                constexpr bool ElectronRecoil = PARAM_BREMS_RECOIL;
+
+                // conversions to PIC units, do not change
+                constexpr float_64 MIN_ENERGY_SI = MIN_ENERGY_MeV * 1.0e6 * sim.si.conv().eV2Joule(1.0);
+                constexpr float_X MIN_ENERGY = static_cast<float_X>(MIN_ENERGY_SI / sim.unit.energy());
+                constexpr float_64 MAX_ENERGY_SI = MAX_ENERGY_MeV * 1.0e6 * sim.si.conv().eV2Joule(1.0);
+                constexpr float_X MAX_ENERGY = static_cast<float_X>(MAX_ENERGY_SI / sim.unit.energy());
+            } // namespace electron
+
+            /** params related to the creation and the emission angle of the photon
+             */
+            namespace photon
+            {
+                /** Low-energy threshold in keV for the creation of photons (soft-photon cutoff).
+                 * Photons below this energy are not created; their energy loss is applied as a drag force.
+                 * Electrons with a kinetic energy below this value emit no macro-photons.
+                 */
+                constexpr float_64 SOFT_PHOTONS_CUTOFF_keV = 5.0;
+
+                /** number of lookup table divisions for the delta axis.
+                 * Delta is the angular emission probability (normalized to one) integrated from zero to theta,
+                 * where theta is the angle between the photon momentum and the final electron momentum.
+                 *
+                 * The axis is scaled linearly.
+                 */
+                constexpr uint32_t NUM_SAMPLES_DELTA = 256 * PARAM_BREMS_NUM_SAMPLES_SCALE;
+
+                /** number of lookup table divisions for the gamma axis.
+                 * Gamma is the relativistic factor of the incident electron.
+                 *
+                 * The axis is scaled logarithmically.
+                 */
+                constexpr uint32_t NUM_SAMPLES_GAMMA = 64 * PARAM_BREMS_NUM_SAMPLES_SCALE;
+
+                /** Maximal value of delta for the lookup table.
+                 * Delta is the angular emission probability (normalized to one) integrated from zero to theta,
+                 * where theta is the angle between the photon momentum and the final electron momentum.
+                 *
+                 * A uniform random number in [0, 1) is mapped to [0, MAX_DELTA), so the angles beyond the
+                 * MAX_DELTA quantile are not sampled. A value close to one is reasonable.
+                 */
+                constexpr float_64 MAX_DELTA = 0.95;
+
+                /** minimal gamma for the lookup table. */
+                constexpr float_64 MIN_GAMMA = 1.0;
+
+                /** maximal gamma for the lookup table.
+                 * Electrons above this value use the table values at MAX_GAMMA and a warning is printed.
+                 */
+                constexpr float_64 MAX_GAMMA = 250;
+
+                /** if the emission or deflection probability per time step is higher than this value, a warning
+                 * is printed (once per simulation).
+                 */
+                constexpr float_64 SINGLE_EMISSION_PROB_LIMIT = 0.4;
+
+                /** ratio of the electron weighting to the photon weighting.
+                 * The emission probability is multiplied by this value.
+                 */
+                constexpr float_64 WEIGHTING_RATIO = 10;
+
+                // conversions to PIC units, do not change
+                constexpr float_64 SOFT_PHOTONS_CUTOFF_SI
+                    = SOFT_PHOTONS_CUTOFF_keV * 1.0e3 * sim.si.conv().eV2Joule(1.0);
+                constexpr float_X SOFT_PHOTONS_CUTOFF
+                    = static_cast<float_X>(SOFT_PHOTONS_CUTOFF_SI / sim.unit.energy());
+            } // namespace photon
+
+            /** FieldTmp slot used for the ion density.
+             *
+             * The slot is filled each time step before use, so it can be shared with other stages that also
+             * fill their slots before use (e.g. ThomasFermi ionization uses slots 0 and 1).
+             */
+            constexpr uint32_t fieldTmpSlot = 0;
+
+            /** if true, the warnings for out-of-range table lookups and too high probabilities are suppressed
+             *
+             * Without suppression each kernel writes a flag to global memory if a requirement fails.
+             */
+            constexpr bool supressRequirementWarning = false;
+
+            /** if true, MPI rank 0 writes the lookup tables as text files at start-up
+             *  (bremsstrahlung_spectrum_Z<Z>.dat, bremsstrahlung_photonAngle.dat in the working directory)
+             */
+            constexpr bool dumpTables = true;
+
+        } // namespace bremsstrahlung
+    } // namespace particles
+} // namespace picongpu

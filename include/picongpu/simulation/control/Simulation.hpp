@@ -41,6 +41,7 @@
 #include "picongpu/simulation/control/MovingWindow.hpp"
 #include "picongpu/simulation/control/checkpointingState.hpp"
 #include "picongpu/simulation/stage/AtomicPhysics.hpp"
+#include "picongpu/simulation/stage/Bremsstrahlung.hpp"
 #include "picongpu/simulation/stage/Collision.hpp"
 #include "picongpu/simulation/stage/CurrentBackground.hpp"
 #include "picongpu/simulation/stage/CurrentDeposition.hpp"
@@ -331,6 +332,8 @@ namespace picongpu
 
             synchrotronRadiation = std::make_shared<simulation::stage::SynchrotronRadiation>(*cellDescription);
 
+            bremsstrahlung = std::make_shared<simulation::stage::Bremsstrahlung>(*cellDescription);
+
             initFields(dc);
 
             myFieldSolver = std::make_shared<fields::Solver>(*cellDescription);
@@ -506,6 +509,7 @@ namespace picongpu
             ParticleIonization{*cellDescription}(currentStep);
             (*atomicPhysics)(*cellDescription, currentStep);
             (*synchrotronRadiation)(currentStep);
+            (*bremsstrahlung)(currentStep);
             EventTask commEvent;
             ParticlePush{}(currentStep, commEvent);
             fieldBackground->disable(currentStep);
@@ -579,6 +583,9 @@ namespace picongpu
 
         // extension: Synchrotron Radiation
         std::shared_ptr<simulation::stage::SynchrotronRadiation> synchrotronRadiation;
+
+        // extension: Bremsstrahlung
+        std::shared_ptr<simulation::stage::Bremsstrahlung> bremsstrahlung;
 
         std::shared_ptr<simulation::stage::AtomicPhysics> atomicPhysics;
 

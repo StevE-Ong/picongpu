@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#
+# Copyright 2026 Jian Fuh Ong
+#
+# This file is part of PIConGPU.
+#
+# PIConGPU is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# PIConGPU is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with PIConGPU.
+# If not, see <http://www.gnu.org/licenses/>.
+#
+
+#
+# generic compile options
+#
+
+################################################################################
+# add presets here
+#   - default: index 0
+#   - start with zero index
+#   - increase by 1, no gaps
+
+# 0: stationary test, Au, 10 MeV: emission only (no deflection, no drag, no recoil)
+flags[0]="-DPARAM_OVERWRITES:LIST='-DPARAM_EKIN_MEV=10.0;-DPARAM_ATOMIC_NUMBERS=Gold_t'"
+# 1: as 0 with deflection on (deflection rate and angle)
+flags[1]="-DPARAM_OVERWRITES:LIST='-DPARAM_EKIN_MEV=10.0;-DPARAM_ATOMIC_NUMBERS=Gold_t;-DPARAM_BREMS_DEFLECTION=true'"
+# 2: energy balance, Au, 10 MeV: drag and recoil on, no deflection
+flags[2]="-DPARAM_OVERWRITES:LIST='-DPARAM_EKIN_MEV=10.0;-DPARAM_ATOMIC_NUMBERS=Gold_t;-DPARAM_BREMS_ENERGYLOSS=true;-DPARAM_BREMS_RECOIL=true'"
+# 3: as 0 with all table resolutions doubled (table error)
+flags[3]="-DPARAM_OVERWRITES:LIST='-DPARAM_EKIN_MEV=10.0;-DPARAM_ATOMIC_NUMBERS=Gold_t;-DPARAM_BREMS_NUM_SAMPLES_SCALE=2'"
+# 4: as 0 for aluminium (solid density 6.03e28 m^-3)
+flags[4]="-DPARAM_OVERWRITES:LIST='-DPARAM_EKIN_MEV=10.0;-DPARAM_ATOMIC_NUMBERS=Aluminium_t;-DPARAM_ION_DENSITY_SI=6.03e28'"
+
+################################################################################
+# execution
+
+case "$1" in
+    -l)  echo ${#flags[@]}
+         ;;
+    -ll) for f in "${flags[@]}"; do echo $f; done
+         ;;
+    *)   echo -n ${flags[$1]}
+         ;;
+esac

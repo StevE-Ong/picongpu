@@ -1,0 +1,76 @@
+/* Copyright 2026 Jian Fuh Ong
+ *
+ * This file is part of PIConGPU.
+ *
+ * PIConGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * PIConGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with PIConGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/** @file
+ *
+ * Bremsstrahlung test: start positions and electron drift.
+ */
+
+#pragma once
+
+#include "picongpu/particles/manipulators/manipulators.def"
+#include "picongpu/particles/startPosition/functors.def"
+
+#include <pmacc/math/operation.hpp>
+
+/** kinetic energy of the mono-energetic electrons in MeV */
+#ifndef PARAM_EKIN_MEV
+#    define PARAM_EKIN_MEV 10.0
+#endif
+
+namespace picongpu
+{
+    namespace particles
+    {
+        namespace manipulators
+        {
+            struct DriftParam
+            {
+                //! electron rest energy 0.51099895 MeV (CODATA 2018)
+                static constexpr float_64 gamma = 1.0 + PARAM_EKIN_MEV / 0.51099895;
+                static constexpr auto driftDirection = float3_X(1.0, 0.0, 0.0);
+            };
+
+            using AssignXDrift = unary::Drift<DriftParam, pmacc::math::operation::Assign>;
+        } // namespace manipulators
+
+        constexpr float_X MIN_WEIGHTING = 1.0;
+
+        namespace startPosition
+        {
+            struct RandomParameter
+            {
+                static constexpr uint32_t numParticlesPerCell = 20u;
+            };
+
+            using Random = RandomImpl<RandomParameter>;
+
+            /** ions on a regular lattice with two macro-ions per cell and direction.
+             * With the TSC shape the deposited ion density is then uniform (partition of unity of the
+             * B-spline shapes on a lattice with spacing cell / 2), so the test has no ion-density noise.
+             */
+            struct QuietParam
+            {
+                using numParticlesPerDimension = mCT::shrinkTo<mCT::Int<2, 2, 2>, simDim>::type;
+            };
+
+            using Quiet = QuietImpl<QuietParam>;
+        } // namespace startPosition
+    } // namespace particles
+} // namespace picongpu

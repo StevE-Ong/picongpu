@@ -200,6 +200,12 @@ namespace picongpu
     //! alias for particle that emmits synchrotron radiation, see also synchrotron.param
     alias(synchrotron);
 
+    //! alias for the ion species an electron species emits Bremsstrahlung on, see also bremsstrahlung.param
+    alias(bremsstrahlungIons);
+
+    //! alias for the photon species of the Bremsstrahlung of an electron species, see also bremsstrahlung.param
+    alias(bremsstrahlungPhotons);
+
     //! alias for particle to field interpolation, see also species.param
     alias(interpolation);
 

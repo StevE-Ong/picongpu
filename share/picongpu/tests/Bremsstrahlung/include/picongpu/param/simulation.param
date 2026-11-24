@@ -1,0 +1,53 @@
+/* Copyright 2026 Jian Fuh Ong
+ *
+ * This file is part of PIConGPU.
+ *
+ * PIConGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * PIConGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with PIConGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/** @file
+ *
+ * Bremsstrahlung test: cell size and time step.
+ *
+ * There are no fields in this test (no pusher, no current), so the cell size only sets the time step.
+ * The time step is below the 3D Yee CFL limit dx / (sqrt(3) c) = 3.85e-15 s.
+ */
+
+#pragma once
+
+namespace picongpu
+{
+    namespace SI
+    {
+        /** Duration of one timestep
+         *  unit: seconds */
+        constexpr float_64 DELTA_T_SI = 3.5e-15;
+
+        /** unit: meter */
+        constexpr float_64 CELL_WIDTH_SI = 2.0e-6;
+        constexpr float_64 CELL_HEIGHT_SI = CELL_WIDTH_SI;
+        constexpr float_64 CELL_DEPTH_SI = CELL_WIDTH_SI;
+
+        /** ion number density: solid gold, 19.3 g/cm^3 / 196.97 u = 5.90e28 m^-3
+         *  unit: ELEMENTS/m^3
+         */
+#ifndef PARAM_ION_DENSITY_SI
+#    define PARAM_ION_DENSITY_SI 5.90e28
+#endif
+        constexpr float_64 BASE_DENSITY_SI = PARAM_ION_DENSITY_SI;
+    } // namespace SI
+
+    constexpr uint32_t TYPICAL_PARTICLES_PER_CELL = 20u;
+} // namespace picongpu
