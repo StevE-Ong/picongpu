@@ -60,6 +60,8 @@ namespace picongpu
              *
              * failedRequirementBit: requirement 1 or 2 above 0.1 (only checked if supressRequirementWarning is
              * false); probabilityAboveOneBit: emission probability per step above 1 (always checked).
+             * Pass them to alpaka::atomicOr as a temporary (int32_t{bit}): atomicOr takes the value by reference,
+             * and a namespace-scope constant cannot be referenced in CUDA device code.
              */
             constexpr int32_t failedRequirementBit = 1;
             constexpr int32_t probabilityAboveOneBit = 2;
@@ -224,7 +226,7 @@ namespace picongpu
                             alpaka::atomicOr(
                                 worker.getAcc(),
                                 &(failedRequirementQBuff(DataSpace<1>{0})),
-                                failedRequirementBit);
+                                int32_t{failedRequirementBit});
                     }
 
                     numericFactor *= math::sqrt(3._X) / (pmacc::math::Pi<float_X>::doubleValue);
@@ -244,7 +246,7 @@ namespace picongpu
                         alpaka::atomicOr(
                             worker.getAcc(),
                             &(failedRequirementQBuff(DataSpace<1>{0})),
-                            probabilityAboveOneBit);
+                            int32_t{probabilityAboveOneBit});
 
                     return (propability > randNr2) * delta;
                 }
