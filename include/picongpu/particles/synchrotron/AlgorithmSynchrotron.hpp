@@ -168,7 +168,11 @@ namespace picongpu
                     {
                         float_X zq1 = math::pow(2, minZqExponent + stepWidthLogatihmicScale * (index));
                         float_X zq2 = math::pow(2, minZqExponent + stepWidthLogatihmicScale * (index + 1));
-                        float_X f = (zq - zq1) / (zq2 - zq1);
+                        /* rounding of log2/pow can put zq slightly outside [zq1, zq2]; f must stay in [0, 1],
+                         * because logInterpolation computes pow(F, 1 - f) * pow(Ftemp, f) and a table entry can be
+                         * 0 (F1, F2 underflow at large zq): pow(0, f < 0) = inf gave an emission probability of inf
+                         */
+                        float_X f = math::min(math::max((zq - zq1) / (zq2 - zq1), 0._X), 1._X);
 
                         /** @todo Test Logarithmic interpolation:
                          *     1) how slow is it?
