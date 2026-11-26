@@ -79,9 +79,10 @@ namespace picongpu::simulation::stage
         void setFailedRequirementQ(bool const value);
 
         /** Check if the requirements are met
-         * @returns true if the requirements are not met
+         * @returns bit mask of the failed requirements (particles::synchrotron::failedRequirementBit,
+         *          particles::synchrotron::probabilityAboveOneBit), 0 if all requirements are met
          */
-        bool checkFailedRequirementQ();
+        int32_t checkFailedRequirementQ();
 
         /** set tableValuesF1F2 at index iZq and Accessor
          * @param iZq index
@@ -133,5 +134,6 @@ namespace picongpu::simulation::stage
          */
         std::shared_ptr<GridBuffer<int32_t, 1>> failedRequirementQ;
         bool failedRequirementPrinted;
+        bool probabilityAboveOnePrinted;
     };
 } // namespace picongpu::simulation::stage

@@ -166,10 +166,10 @@ namespace picongpu::simulation::stage
         failedRequirementQ->hostToDevice();
     }
 
-    bool SynchrotronRadiation::checkFailedRequirementQ()
+    int32_t SynchrotronRadiation::checkFailedRequirementQ()
     {
         failedRequirementQ->deviceToHost();
-        return failedRequirementQ->getHostBuffer().getDataBox()(DataSpace<1>{0}) == true;
+        return failedRequirementQ->getHostBuffer().getDataBox()(DataSpace<1>{0});
     }
 
     template<typename T_Accessor>
@@ -209,10 +209,31 @@ namespace picongpu::simulation::stage
                 tableValuesF1F2->getDeviceBuffer().getDataBox(),
                 failedRequirementQ);
 
-            //! check if the requirements are met
+            /* check if the requirements are met; the flag is read back only if a check can set it besides the
+             * probability check, which matters only for WEIGHTING_RATIO > 1 (the probability per step of the
+             * original model is far below 1 for any resolved time step)
+             */
+            constexpr bool readRequirementFlag = particles::synchrotron::params::supressRequirementWarning == false
+                                                 || particles::synchrotron::params::WEIGHTING_RATIO != 1.0;
+            int32_t const failedRequirement = readRequirementFlag ? checkFailedRequirementQ() : 0;
+
+            if(failedRequirement & particles::synchrotron::probabilityAboveOneBit)
+            {
+                if(probabilityAboveOnePrinted == false)
+                {
+                    printf(
+                        "Synchrotron Extension: emission probability per time step above 1 (WEIGHTING_RATIO = %g), "
+                        "the emission is under-counted -> reduce WEIGHTING_RATIO or the time step.\n"
+                        "This warning is printed only once per simulation and MPI rank.\n",
+                        static_cast<double>(particles::synchrotron::params::WEIGHTING_RATIO));
+                    probabilityAboveOnePrinted = true;
+                }
+                setFailedRequirementQ(false);
+            }
+
             if constexpr(particles::synchrotron::params::supressRequirementWarning == false)
             {
-                if(checkFailedRequirementQ())
+                if(failedRequirement & particles::synchrotron::failedRequirementBit)
                 {
                     if((failedRequirementPrinted) == false)
                     {
@@ -247,6 +268,7 @@ namespace picongpu::simulation::stage
         //! set the values of variables to false
         setFailedRequirementQ(false);
         failedRequirementPrinted = false;
+        probabilityAboveOnePrinted = false;
 
         constexpr float_64 minZqExp = InterpolationParams::minZqExponent;
         constexpr float_64 maxZqExp = InterpolationParams::maxZqExponent;

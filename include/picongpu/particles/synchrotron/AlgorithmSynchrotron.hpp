@@ -56,6 +56,14 @@ namespace picongpu
     {
         namespace synchrotron
         {
+            /** bits of the failed-requirement flag (set on the device, read by stage::SynchrotronRadiation)
+             *
+             * failedRequirementBit: requirement 1 or 2 above 0.1 (only checked if supressRequirementWarning is
+             * false); probabilityAboveOneBit: emission probability per step above 1 (always checked).
+             */
+            constexpr int32_t failedRequirementBit = 1;
+            constexpr int32_t probabilityAboveOneBit = 2;
+
             /** SynchrotronIdea
              * Main algorithm of the synchrotron radiation model.
              * From paper: "Extended particle-in-cell schemes for physics in ultrastrong laser fields: Review and
@@ -197,10 +205,15 @@ namespace picongpu
                                             * sim.pic.getElectronMass() * sim.pic.getSpeedOfLight()
                                             / (sim.pic.getEps0() * 4._X * PI);
 
+                    //! macro-photons are created WEIGHTING_RATIO times more often, each with 1/WEIGHTING_RATIO
+                    //! weighting
+                    constexpr float_X weightingRatio = static_cast<float_X>(params::WEIGHTING_RATIO);
+
                     if constexpr(params::supressRequirementWarning == false)
                     {
-                        float_X requirement1 = numericFactor * 1.5_X * math::pow(chi, 2._X / 3._X) / gamma;
-                        float_X requirement2 = numericFactor * 0.5_X * chi / gamma;
+                        float_X requirement1
+                            = weightingRatio * numericFactor * 1.5_X * math::pow(chi, 2._X / 3._X) / gamma;
+                        float_X requirement2 = weightingRatio * numericFactor * 0.5_X * chi / gamma;
 
                         /** this warning means that the propability of generating a photon is high for given dt (higher
                          * than 10%) this means that we possibly generate photons every timestep and
@@ -208,7 +221,10 @@ namespace picongpu
                          * If requirement is not met send warning at every iteration
                          */
                         if(requirement1 > 0.1_X || requirement2 > 0.1_X)
-                            alpaka::atomicExch(worker.getAcc(), &(failedRequirementQBuff(DataSpace<1>{0})), 1);
+                            alpaka::atomicOr(
+                                worker.getAcc(),
+                                &(failedRequirementQBuff(DataSpace<1>{0})),
+                                failedRequirementBit);
                     }
 
                     numericFactor *= math::sqrt(3._X) / (pmacc::math::Pi<float_X>::doubleValue);
@@ -219,7 +235,16 @@ namespace picongpu
                     //! the delta is in oneMinusDeltaOverDelta in numerator1
                     float_X const denominator = gamma;
 
-                    float_X propability = numericFactor * numerator / denominator * 3._X * r1r1;
+                    float_X propability = weightingRatio * numericFactor * numerator / denominator * 3._X * r1r1;
+
+                    /* at most one macro-photon per electron and step: a probability above 1 under-counts the
+                     * emission (always reported, also when supressRequirementWarning is true)
+                     */
+                    if(propability > 1._X)
+                        alpaka::atomicOr(
+                            worker.getAcc(),
+                            &(failedRequirementQBuff(DataSpace<1>{0})),
+                            probabilityAboveOneBit);
 
                     return (propability > randNr2) * delta;
                 }
@@ -391,19 +416,23 @@ namespace picongpu
 
                     //! conversion factor from photon energy to momentum
                     constexpr float_X convFactor = 1.0_X / sim.pic.getSpeedOfLight();
-                    //! if this is wrong uncomment the lines below and comment this line
-                    float3_X const PhotonMomentum = particle[momentum_] * photonEnergy * convFactor;
+                    /* momentum_ is the momentum of the whole macro-particle (it includes the weighting); the
+                     * macro-photon gets 1/WEIGHTING_RATIO of the electron weighting
+                     */
+                    constexpr float_X weightingRatio = static_cast<float_X>(params::WEIGHTING_RATIO);
+                    float3_X const PhotonMomentum = particle[momentum_] * (photonEnergy * convFactor / weightingRatio);
 
                     //! save to member variable to use in creation of new photon
                     m_PhotonMomentum = PhotonMomentum;
 
                     /** generate one photon if energy is > minEnergy
                      *
-                     * minEnergy is the energy of one real photon, but PhotonMomentum is the momentum of the whole
-                     * macro-photon (momentum_ includes the weighting), so the threshold is scaled by the weighting.
+                     * minEnergy is the energy of one real photon, so the threshold is scaled by the macro-photon
+                     * weighting.
                      */
                     return (
-                        pmacc::math::l2norm(PhotonMomentum) > params::minEnergy * convFactor * particle[weighting_]);
+                        pmacc::math::l2norm(PhotonMomentum)
+                        > params::minEnergy * convFactor * particle[weighting_] / weightingRatio);
                 }
 
                 /** Functor implementation
@@ -431,12 +460,16 @@ namespace picongpu
                      * some attributes:
                      * - multiMask: reading from global memory takes longer than just setting it again explicitly
                      * - momentum: because the Photon would get a higher energy because of the Electron mass
+                     * - weighting: the photon gets 1/WEIGHTING_RATIO of the electron weighting
                      */
-                    auto targetPhotonClone = partOp::deselect<pmacc::mp_list<multiMask, momentum>>(childPhoton);
+                    auto targetPhotonClone
+                        = partOp::deselect<pmacc::mp_list<multiMask, momentum, weighting>>(childPhoton);
 
                     targetPhotonClone.derive(worker, idGen, parentElectron);
 
                     childPhoton[momentum_] = m_PhotonMomentum;
+                    childPhoton[weighting_]
+                        = parentElectron[weighting_] / static_cast<float_X>(params::WEIGHTING_RATIO);
 
                     /** conservatElectron of momentum */
                     if constexpr(params::ElectronRecoil)

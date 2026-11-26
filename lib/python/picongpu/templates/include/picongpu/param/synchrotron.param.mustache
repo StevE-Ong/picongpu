@@ -41,6 +41,15 @@ namespace picongpu
                  */
                 constexpr float_64 minEnergy = {{#min_energy}}{{{min_energy}}}{{/min_energy}}{{^min_energy}}sim.pic.getHbar<float_64>() / sim.pic.getDt<float_64>(){{/min_energy}};
 
+                /** ratio of the electron weighting to the macro-photon weighting
+                 *
+                 * The emission probability is multiplied by this value and each macro-photon gets
+                 * 1/WEIGHTING_RATIO of the electron weighting: the mean emitted energy does not change and the
+                 * number of macro-photons grows by this factor. The emission probability per step must stay below 1
+                 * (a warning is printed if it does not). 1 = original model.
+                 */
+                constexpr float_64 WEIGHTING_RATIO = 1.0;
+
                 //! Parameters how to compute first synhrotron function
                 struct FirstSynchrotronFunctionParams
                 {

@@ -52,6 +52,12 @@ Param: ``minEnergy``
 - **Default:** `sim.pic.getHbar() / sim.pic.getDt()`
 - **Description:** Sets the minimum energy threshold for photons to be considered in the simulation. This parameter helps in filtering out low-energy photons that may be already accounted for by the PIC fields. The default value is an approximation for the maximum photon energy that can be resolved by the field grid. This parameter is dependent on the internal unit system used in PIConGPU (Please use variables defined in `/picongpu/include/picongpu/unitless/*.unitless`).
 
+Param: ``WEIGHTING_RATIO``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+- **Type:** `float_64`
+- **Default:** `1.0`
+- **Description:** Ratio of the electron weighting to the macro-photon weighting. The emission probability is multiplied by this value and each macro-photon gets 1/``WEIGHTING_RATIO`` of the weighting of its parent electron, so the mean emitted energy does not change and the number of macro-photons grows by this factor. The emission probability per time step must stay below 1; if it does not, a warning is printed (also when ``supressRequirementWarning`` is ``true``).
+
 Precomputation Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 The algorithm precomputes necessary functions namely first and second synchrotron functions described in section E. `Spectrum of emission` of [Gonoskov2015]_.
