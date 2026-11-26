@@ -393,8 +393,13 @@ namespace picongpu
                     //! save to member variable to use in creation of new photon
                     m_PhotonMomentum = PhotonMomentum;
 
-                    //! generate one photon if energy is > minEnergy
-                    return (pmacc::math::l2norm(PhotonMomentum) > params::minEnergy * convFactor);
+                    /** generate one photon if energy is > minEnergy
+                     *
+                     * minEnergy is the energy of one real photon, but PhotonMomentum is the momentum of the whole
+                     * macro-photon (momentum_ includes the weighting), so the threshold is scaled by the weighting.
+                     */
+                    return (
+                        pmacc::math::l2norm(PhotonMomentum) > params::minEnergy * convFactor * particle[weighting_]);
                 }
 
                 /** Functor implementation
